@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Local dev/patch scripts (contain API keys)
+wf_current.json
+wf_updated.json
+patch_*.py
+fix_*.py
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,717 @@
+{
+  "name": "📝 Article Writer",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "article/generate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-main",
+      "name": "Webhook",
+      "position": [
+        -2880,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "article-writer-v1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\n\n// Normalize input fields\nfunction normalize(v) {\n  return String(v ?? '').trim();\n}\n\nfunction firstDefined(...values) {\n  for (const value of values) {\n    if (value !== undefined && value !== null && value !== '') return value;\n  }\n  return '';\n}\n\nconst mode = normalize(inputData.mode); // 'scratch' or 'theses'\nconst articleType = normalize(inputData.articleType); // 'thought_leadership', 'howto', 'pr_news'\nconst speakerId = normalize(inputData.speakerId);\nconst topic = normalize(inputData.topic);\nconst description = normalize(inputData.description);\nconst theses = inputData.theses; // Array of strings for theses mode\nconst jobId = normalize(inputData.jobId);\nconst callbackUrl = normalize(inputData.callbackUrl);\n\n// Validation\nconst missingFields = [];\nif (!mode) missingFields.push('mode (scratch/theses)');\nif (!articleType) missingFields.push('articleType (thought_leadership/howto/pr_news)');\nif (!speakerId) missingFields.push('speakerId');\nif (mode === 'scratch' && !topic) missingFields.push('topic');\nif (mode === 'scratch' && !description) missingFields.push('description');\nif (mode === 'theses' && (!theses || !Array.isArray(theses) || theses.length === 0)) missingFields.push('theses (array of strings)');\nif (!jobId) missingFields.push('jobId');\n\n// Validate article type\nconst validArticleTypes = ['thought_leadership', 'howto', 'pr_news'];\nif (articleType && !validArticleTypes.includes(articleType)) {\n  missingFields.push('articleType must be one of: thought_leadership, howto, pr_news');\n}\n\n// Validate mode\nconst validModes = ['scratch', 'theses'];\nif (mode && !validModes.includes(mode)) {\n  missingFields.push('mode must be one of: scratch, theses');\n}\n\nreturn [{\n  json: {\n    ...inputData,\n    mode,\n    articleType,\n    speakerId,\n    topic,\n    description,\n    theses: mode === 'theses' ? theses : [],\n    jobId,\n    callbackUrl,\n    isValid: missingFields.length === 0,\n    missingFields,\n    timestamp: new Date().toISOString(),\n  },\n}];\n"
+      },
+      "id": "parse-request",
+      "name": "Parse Request",
+      "position": [
+        -2560,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "check-valid",
+              "leftValue": "={{ $json.isValid }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": "={{ true }}"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "validate-fields",
+      "name": "Validate Fields",
+      "position": [
+        -2240,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "cybernexcorps"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ceo-comment-writer"
+        },
+        "filePath": "={{ 'profiles/' + $json.speakerId + '.json' }}",
+        "asBinaryProperty": false,
+        "additionalParameters": {
+          "reference": "main"
+        }
+      },
+      "id": "fetch-profile",
+      "name": "Fetch Speaker Profile",
+      "position": [
+        -1920,
+        0
+      ],
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "webhookId": "article-writer-profile",
+      "credentials": {
+        "githubApi": {
+          "id": "pGlylAmPTa6t4Io0",
+          "name": "GitHub account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fallback profile if GitHub fetch fails\nconst speakerId = $input.first().json.speakerId;\n\nconst fallbackProfiles = {\n  maria_arkhangelskaya: {\n    name_ru: \"Мария Архангельская\",\n    title_ru: \"Генеральный директор и управляющий партнёр\",\n    company: \"DDVB\",\n    voice_guidelines: \"Экспертный, но не менторский. Конкретные примеры. Живые глаголы.\"\n  },\n  default: {\n    name_ru: \"Эксперт DDVB\",\n    title_ru: \"Специалист\",\n    company: \"DDVB\",\n    voice_guidelines: \"Экспертный тон. Конкретика. Живой язык.\"\n  }\n};\n\nconst profileData = $input.first().json.profileData;\nconst profile = profileData ? JSON.parse(profileData) : fallbackProfiles[speakerId] || fallbackProfiles.default;\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    profile,\n    speakerName: profile.name_ru,\n    speakerTitle: profile.title_ru,\n    speakerCompany: profile.company,\n    speakerVoiceGuidelines: profile.voice_guidelines,\n  },\n}];\n"
+      },
+      "id": "parse-profile",
+      "name": "Parse Profile",
+      "position": [
+        -1680,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.mode }}",
+        "operation": "equal",
+        "type": "comparison",
+        "typeVersion": 1
+      },
+      "id": "switch-mode",
+      "name": "Switch: Mode",
+      "position": [
+        -1440,
+        0
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build 4 parallel research queries for Scratch mode\nconst topic = $input.first().json.topic;\nconst description = $input.first().json.description;\nconst articleType = $input.first().json.articleType;\n\n// Context prefixes for Russian market\nconst ruContext = \"Россия, российский рынок: \";\n\n// Four research streams\nconst queries = [\n  // Stream 1: Industry context and trends\n  `${ruContext}${topic} — отраслевые тренды, состояние рынка, ключевые игроки`,\n  // Stream 2: Expert opinions and analytics\n  `${ruContext}${topic} — экспертные мнения, аналитика, прогнозы`,\n  // Stream 3: Case studies and examples\n  `${ruContext}${topic} — практические примеры, кейсы, успешные проекты`,\n  // Stream 4: Statistics and data\n  `${ruContext}${topic} — статистика, метрики, исследования`\n];\n\nreturn queries.map((q, i) => ({\n  json: {\n    query: q,\n    streamId: i + 1,\n    topic,\n    description,\n    articleType\n  }\n}));\n"
+      },
+      "id": "build-scratch-queries",
+      "name": "Build Scratch Queries",
+      "position": [
+        -1200,
+        -200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "model": "sonar-pro",
+        "query": "={{ $json.query }}",
+        "searchRecency": "month",
+        "options": {}
+      },
+      "id": "perplexity-scratch",
+      "name": "Perplexity Research",
+      "position": [
+        -960,
+        -200
+      ],
+      "type": "n8n-nodes-base.perplexityTool",
+      "typeVersion": 1,
+      "credentials": {
+        "perplexityApi": {
+          "id": "perplexity-api",
+          "name": "Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge 4 research streams for Scratch mode\nconst items = $input.all();\n\n// Combine all research into one structure\nlet mergedContent = \"\";\nlet allSources = [];\n\nfor (const item of items) {\n  const json = item.json;\n  mergedContent += `\\n## Поток ${json.streamId}: ${json.query}\\n`;\n  mergedContent += json.content || \"\";\n  \n  // Extract sources if available\n  if (json.sources) {\n    allSources = allSources.concat(json.sources);\n  }\n}\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    researchContent: mergedContent,\n    researchSources: allSources,\n    researchMode: \"scratch\",\n    streamCount: items.length\n  }\n}];\n"
+      },
+      "id": "merge-scratch-research",
+      "name": "Merge Scratch Research",
+      "position": [
+        -720,
+        -200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare thesis research for Theses mode\nconst theses = $input.first().json.theses || [];\nconst topic = $input.first().json.topic || $input.first().json.description;\nconst ruContext = \"Россия, российский рынок: \";\n\n// For each thesis, create a research item\nreturn theses.map((thesis, i) => ({\n  json: {\n    thesis: thesis,\n    thesisIndex: i + 1,\n    totalTheses: theses.length,\n    topic,\n    query: `${ruContext}${topic} — ${thesis}`\n  }\n}));\n"
+      },
+      "id": "prepare-thesis-research",
+      "name": "Prepare Thesis Research",
+      "position": [
+        -1200,
+        200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "model": "sonar-pro",
+        "query": "={{ $json.query }}",
+        "searchRecency": "month",
+        "options": {}
+      },
+      "id": "perplexity-thesis",
+      "name": "Perplexity Thesis Research",
+      "position": [
+        -960,
+        200
+      ],
+      "type": "n8n-nodes-base.perplexityTool",
+      "typeVersion": 1,
+      "credentials": {
+        "perplexityApi": {
+          "id": "perplexity-api",
+          "name": "Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge thesis research results\nconst items = $input.all();\n\nlet mergedContent = \"\";\nlet allSources = [];\n\nfor (const item of items) {\n  const json = item.json;\n  mergedContent += `\\n### Тезис ${json.thesisIndex}: ${json.thesis}\\n`;\n  mergedContent += json.content || \"\";\n  \n  if (json.sources) {\n    allSources = allSources.concat(json.sources);\n  }\n}\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    researchContent: mergedContent,\n    researchSources: allSources,\n    researchMode: \"theses\",\n    thesisCount: items.length\n  }\n}];\n"
+      },
+      "id": "merge-thesis-research",
+      "name": "Merge Thesis Research",
+      "position": [
+        -720,
+        200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build writer prompt based on article type\nconst articleType = $input.first().json.articleType;\nconst topic = $input.first().json.topic;\nconst description = $input.first().json.description;\nconst researchContent = $input.first().json.researchContent;\nconst speakerName = $input.first().json.speakerName;\nconst speakerTitle = $input.first().json.speakerTitle;\nconst speakerCompany = $input.first().json.speakerCompany;\nconst speakerVoiceGuidelines = $input.first().json.speakerVoiceGuidelines;\n\n// Load prompt template based on type\nconst promptTemplates = {\n  thought_leadership: `Ты — экспертный автор брендингового агентства DDVB. Напиши Thought Leadership статью.\n\n## Тема\n${topic}\n\n## Описание\n${description}\n\n## Результат исследования\n${researchContent}\n\n## Профиль спикера\nИмя: ${speakerName}\nДолжность: ${speakerTitle}\nКомпания: ${speakerCompany}\n\n## Voice Guidelines\n${speakerVoiceGuidelines}\n\n## Требования\n- Объём: 1800-2200 слов\n- Структура: Лид → Контекст → Экспертный взгляд → Примеры → Вывод\n- Используй заголовки H2\n- Экспертный, но не менторский тон\n- Конкретные примеры и цифры`,\n\n  howto: `Ты — экспертный автор брендингового агентства DDVB. Напиши How-to статью (практическое руководство).\n\n## Тема\n${topic}\n\n## Описание\n${description}\n\n## Результат исследования\n${researchContent}\n\n## Профиль спикера\nИмя: ${speakerName}\nДолжность: ${speakerTitle}\nКомпания: ${speakerCompany}\n\n## Voice Guidelines\n${speakerVoiceGuidelines}\n\n## Требования\n- Объём: 1500-2000 слов\n- Структура: Введение → Понимание проблемы → Пошаговое руководство → Примеры → Заключение\n- Используй заголовки H2 и нумерованные списки\n- Практический, конкретный тон\n- Обращение «ты» к читателю`,\n\n  pr_news: `Ты — PR-автор брендингового агентства DDVB. Напиши PR/новостную статью.\n\n## Тема\n${topic}\n\n## Описание\n${description}\n\n## Результат исследования\n${researchContent}\n\n## Профиль спикера\nИмя: ${speakerName}\nДолжность: ${speakerTitle}\nКомпания: ${speakerCompany}\n\n## Требования\n- Объём: 800-1200 слов\n- Структура: Заголовок → Лид → Основная часть → Справка о компании → Контакты\n- Новостной, информативный тон\n- Факты и цифры на первом месте\n- Включи прямую цитату спикера`\n};\n\nconst systemPrompt = promptTemplates[articleType] || promptTemplates.thought_leadership;\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    writerSystemPrompt: systemPrompt,\n    articleType\n  }\n}];\n"
+      },
+      "id": "build-writer-prompt",
+      "name": "Build Writer Prompt",
+      "position": [
+        -480,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "claude-sonnet-4-20250514",
+        "messages": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "={{ $json.writerSystemPrompt }}"
+            },
+            {
+              "role": "user",
+              "content": "Напиши статью на тему: {{ $json.topic }}. Описание: {{ $json.description }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 8000
+        }
+      },
+      "id": "claude-writer",
+      "name": "Claude Writer",
+      "position": [
+        -240,
+        0
+      ],
+      "type": "n8n-nodes-base.anthropic",
+      "typeVersion": 1,
+      "webhookId": "article-writer-claude",
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-api",
+          "name": "DDVB Anthropic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o",
+        "messages": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Ты — стилистический редактор. Твоя задача — отредактировать СТИЛЬ текста, не меняя содержание.\n\n## ГЛАВНОЕ ПРАВИЛО\nТы — СТИЛИСТИЧЕСКИЙ редактор, а НЕ автор. Сохрани ВСЕ:\n- Заголовки H2, H3\n- Факты, имена, названия, метрики, ссылки\n- Структуру и порядок разделов\n- Списки и цитаты\n\n## Удали AI-паттерны:\n1. «является» → прямой глагол\n2. «данный/данная» → «этот/эта»\n3. «позволяет/обеспечивает» → конкретный глагол\n4. «в рамках» → убери\n5. «осуществлять/реализовывать» → сделать, провести\n6. Инфляция: «уникальный», «инновационный» → убери\n7. Цепочки существительных → глаголы\n8. Избыточный пассив → актив\n9. Шаблонные переходы → убери\n\n## Добавь душу:\n- Используй «мы» для DDVB\n- Вариация ритма\n- Живые глаголы\n\n## Выведи ТОЛЬКО текст статьи без комментариев."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.article }}",
+              "roleOptions": {}
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "humanizer",
+      "name": "Humanizer",
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 3.2,
+      "webhookId": "article-writer-humanizer",
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-api",
+          "name": "DDVB OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract article and calculate stats\nconst article = $input.first().json.content || $input.first().json.article || \"\";\nconst charCount = article.length;\nconst wordCount = article.split(/\\s+/).filter(w => w.length > 0).length;\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    article,\n    charCount,\n    wordCount,\n    timestamp: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "finalize-article",
+      "name": "Finalize Article",
+      "position": [
+        240,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.callbackUrl }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-DDVB-API-Key",
+              "value": "={{ $env.DDVB_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "jobId",
+              "value": "={{ $json.jobId }}"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "workflowType",
+              "value": "article"
+            },
+            {
+              "name": "result",
+              "value": "={{ { content: $json.article, charCount: $json.charCount, wordCount: $json.wordCount, speakerName: $json.speakerName, speakerTitle: $json.speakerTitle, articleType: $json.articleType } }}"
+            },
+            {
+              "name": "executionTime",
+              "value": "={{ $json.executionTime }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "callback-success",
+      "name": "Callback: Success",
+      "position": [
+        480,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Error response for missing fields\nconst missingFields = $input.first().json.missingFields || [];\n\nreturn [{\n  json: {\n    success: false,\n    error: \"Missing required fields\",\n    details: missingFields,\n    message: `Не хватает обязательных полей: ${missingFields.join(', ')}`\n  }\n}];\n"
+      },
+      "id": "error-missing-fields",
+      "name": "Error: Missing Fields",
+      "position": [
+        -1968,
+        -160
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build error callback payload\nconst jobId = $input.first().json.jobId;\nconst callbackUrl = $input.first().json.callbackUrl;\nconst errorMessage = $input.first().json.error?.message || \"Unknown error\";\nconst errorStage = $input.first().json.error?.stage || \"unknown\";\n\nif (!jobId || !callbackUrl) {\n  return [{\n    json: {\n      success: false,\n      message: \"No jobId or callbackUrl to notify\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    jobId,\n    callbackUrl,\n    errorMessage,\n    errorStage,\n    timestamp: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "prepare-error-callback",
+      "name": "Prepare Error Callback",
+      "position": [
+        480,
+        -200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.callbackUrl }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-DDVB-API-Key",
+              "value": "={{ $env.DDVB_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "jobId",
+              "value": "={{ $json.jobId }}"
+            },
+            {
+              "name": "status",
+              "value": "failed"
+            },
+            {
+              "name": "workflowType",
+              "value": "article"
+            },
+            {
+              "name": "error",
+              "value": "={{ { message: $json.errorMessage, stage: $json.errorStage } }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "callback-error",
+      "name": "Callback: Error",
+      "position": [
+        720,
+        -200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Job accepted\", jobId: $json.jobId } }}"
+      },
+      "id": "respond-202",
+      "name": "Respond 202",
+      "position": [
+        -1920,
+        0
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, message: $json.message } }}"
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "position": [
+        -2208,
+        -160
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Fields": {
+      "main": [
+        [
+          {
+            "node": "Fetch Speaker Profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Speaker Profile": {
+      "main": [
+        [
+          {
+            "node": "Parse Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Profile": {
+      "main": [
+        [
+          {
+            "node": "Switch: Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Mode": {
+      "main": [
+        [
+          {
+            "node": "Build Scratch Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Thesis Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Scratch Queries": {
+      "main": [
+        [
+          {
+            "node": "Perplexity Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity Research": {
+      "main": [
+        [
+          {
+            "node": "Merge Scratch Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Scratch Research": {
+      "main": [
+        [
+          {
+            "node": "Build Writer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Thesis Research": {
+      "main": [
+        [
+          {
+            "node": "Perplexity Thesis Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity Thesis Research": {
+      "main": [
+        [
+          {
+            "node": "Merge Thesis Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Thesis Research": {
+      "main": [
+        [
+          {
+            "node": "Build Writer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Writer Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Writer": {
+      "main": [
+        [
+          {
+            "node": "Humanizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Humanizer": {
+      "main": [
+        [
+          {
+            "node": "Finalize Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Article": {
+      "main": [
+        [
+          {
+            "node": "Callback: Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond 202",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback: Success": {
+      "main": [
+        []
+      ]
+    },
+    "Callback: Error": {
+      "main": [
+        []
+      ]
+    },
+    "Respond 202": {
+      "main": [
+        []
+      ]
+    },
+    "Respond Error": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "article-writer-v1.0",
+  "active": false,
+  "tags": []
+}

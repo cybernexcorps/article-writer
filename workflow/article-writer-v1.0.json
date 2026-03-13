@@ -1,0 +1,1825 @@
+{
+  "updatedAt": "2026-03-13T15:52:57.676Z",
+  "createdAt": "2026-03-13T15:18:19.154Z",
+  "id": "olEdXGbrRTak2c9v",
+  "name": "🧪 Article Writer",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "article/generate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-main",
+      "name": "Webhook",
+      "position": [
+        0,
+        304
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "onError": "continueRegularOutput",
+      "webhookId": "a1b2c3d4-0001-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const EXPECTED_KEY = 'YOUR_N8N_API_KEY';\nconst incoming = $input.first();\nconst headers = incoming.json.headers || {};\nconst receivedKey = headers['x-ddvb-api-key'] || headers['X-DDVB-API-Key'] || '';\nif (receivedKey.trim() !== EXPECTED_KEY.trim()) {\n  throw new Error('Unauthorized: invalid or missing X-DDVB-API-Key');\n}\nconst body = incoming.json.body || incoming.json;\nreturn [{ json: body }];\n"
+      },
+      "id": "validate-api-key",
+      "name": "Validate API Key",
+      "position": [
+        240,
+        304
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst body = item.json.body || item.json;\nconst jobId = body.jobId || 'job-' + Date.now();\nconst callbackUrl = (body.callbackUrl || '').replace(/\\r?\\n/g, '').trim();\nreturn [{ json: { ...body, jobId, callbackUrl, timestamp: new Date().toISOString() } }];\n"
+      },
+      "id": "normalize-web-input",
+      "name": "Normalize Web Input",
+      "position": [
+        480,
+        304
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: \"Job accepted\", jobId: $json.jobId } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "respond-202",
+      "name": "Respond 202",
+      "position": [
+        720,
+        304
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\n\nfunction normalize(v) {\n  return String(v ?? '').trim();\n}\n\nconst mode = normalize(inputData.mode);\nconst articleType = normalize(inputData.articleType);\nconst speakerId = normalize(inputData.speakerId);\nconst topic = normalize(inputData.topic);\nconst description = normalize(inputData.description);\nconst theses = inputData.theses;\nconst jobId = normalize(inputData.jobId);\nconst callbackUrl = normalize(inputData.callbackUrl);\n\nconst missingFields = [];\nif (!mode) missingFields.push('mode (scratch/theses)');\nif (!articleType) missingFields.push('articleType (thought_leadership/howto/pr_news)');\nif (!speakerId) missingFields.push('speakerId');\nif (mode === 'scratch' && !topic) missingFields.push('topic');\nif (mode === 'scratch' && !description) missingFields.push('description');\nif (mode === 'theses' && (!theses || !Array.isArray(theses) || theses.length === 0)) missingFields.push('theses (array of strings)');\nif (!jobId) missingFields.push('jobId');\n\nconst validArticleTypes = ['thought_leadership', 'howto', 'pr_news'];\nif (articleType && !validArticleTypes.includes(articleType)) {\n  missingFields.push('articleType must be one of: thought_leadership, howto, pr_news');\n}\n\nconst validModes = ['scratch', 'theses'];\nif (mode && !validModes.includes(mode)) {\n  missingFields.push('mode must be one of: scratch, theses');\n}\n\nreturn [{\n  json: {\n    ...inputData,\n    mode,\n    articleType,\n    speakerId,\n    topic,\n    description,\n    theses: mode === 'theses' ? theses : [],\n    jobId,\n    callbackUrl,\n    isValid: missingFields.length === 0,\n    missingFields,\n  },\n}];\n"
+      },
+      "id": "parse-request",
+      "name": "Parse Request",
+      "position": [
+        960,
+        304
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "check-valid",
+              "leftValue": "={{ $json.isValid }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "validate-fields",
+      "name": "Validate Fields",
+      "position": [
+        1200,
+        304
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "cybernexcorps"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ceo-comment-writer"
+        },
+        "filePath": "={{ 'profiles/' + $json.speakerId + '.json' }}",
+        "asBinaryProperty": false,
+        "additionalParameters": {
+          "reference": "main"
+        }
+      },
+      "id": "fetch-profile",
+      "name": "Fetch Speaker Profile",
+      "position": [
+        1440,
+        304
+      ],
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "credentials": {
+        "githubApi": {
+          "id": "pGlylAmPTa6t4Io0",
+          "name": "GitHub account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst original = $(\"Parse Request\").first().json;\n\nlet profile = null;\ntry {\n  const rawContent = input.content || '';\n  if (rawContent) {\n    const decoded = Buffer.from(rawContent.replace(/\\n/g, ''), 'base64').toString('utf-8');\n    profile = JSON.parse(decoded);\n  }\n} catch(e) { profile = null; }\n\nconst fallbackProfiles = {\n  maria_arkhangelskaya: {\n    name_ru: 'Мария Архангельская',\n    title_ru: 'Генеральный директор и управляющий партнёр',\n    company: 'DDVB',\n    voice_guidelines: 'Экспертный, но не менторский. Конкретные примеры. Живые глаголы.',\n  },\n  default: {\n    name_ru: 'Эксперт DDVB',\n    title_ru: 'Специалист',\n    company: 'DDVB',\n    voice_guidelines: 'Экспертный тон. Конкретика. Живой язык.',\n  },\n};\n\nif (!profile) {\n  const speakerId = original.speakerId || '';\n  profile = fallbackProfiles[speakerId] || fallbackProfiles.default;\n}\n\nreturn [{\n  json: {\n    ...original,\n    profile,\n    speakerName: profile.name_ru || profile.name || original.speakerId,\n    speakerTitle: profile.title_ru || profile.title || '',\n    speakerCompany: profile.company || 'DDVB',\n    speakerVoiceGuidelines: profile.voice_guidelines || profile.tone || '',\n  }\n}];\n"
+      },
+      "id": "parse-profile",
+      "name": "Parse Profile",
+      "position": [
+        1680,
+        304
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "scratch-check",
+                    "leftValue": "={{ $json.mode }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "scratch"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputIndex": 0,
+              "renameOutput": true,
+              "outputLabel": "Scratch"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "theses-check",
+                    "leftValue": "={{ $json.mode }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "theses"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputIndex": 1,
+              "renameOutput": true,
+              "outputLabel": "Theses"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "switch-mode",
+      "name": "Switch: Mode",
+      "position": [
+        1920,
+        304
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst topic = d.topic || '';\nconst description = d.description || '';\nconst articleType = d.articleType || '';\nconst ruContext = 'Россия, российский рынок: ';\n\nconst queries = [\n  ruContext + topic + ' — отраслевые тренды, состояние рынка, ключевые игроки',\n  ruContext + topic + ' — экспертные мнения, аналитика, прогнозы',\n  ruContext + topic + ' — практические примеры, кейсы, успешные проекты',\n  ruContext + topic + ' — статистика, метрики, исследования',\n];\n\nreturn queries.map((q, i) => ({\n  json: {\n    ...d,\n    query: q,\n    streamId: i + 1,\n    topic,\n    description,\n    articleType,\n  }\n}));\n"
+      },
+      "id": "build-scratch-queries",
+      "name": "Build Scratch Queries",
+      "position": [
+        2160,
+        112
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "role": "user",
+              "content": "={{ $json.query }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 2000
+        },
+        "requestOptions": {}
+      },
+      "id": "perplexity-scratch",
+      "name": "Perplexity Research",
+      "position": [
+        2400,
+        112
+      ],
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "credentials": {
+        "perplexityApi": {
+          "id": "um7RpJwg4207ROLP",
+          "name": "Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nlet mergedContent = '';\nlet allSources = [];\n\nfor (const item of items) {\n  const json = item.json;\n  const content = json.choices?.[0]?.message?.content || '';\n  mergedContent += '\\n## Поток ' + json.streamId + ': ' + json.query + '\\n';\n  mergedContent += content;\n  if (json.sources) {\n    allSources = allSources.concat(json.sources);\n  }\n}\n\n// Back-reference Parse Profile to preserve original request data\nconst first = $(\"Parse Profile\").first().json;\n\nreturn [{\n  json: {\n    ...first,\n    researchContent: mergedContent,\n    researchSources: allSources,\n    researchMode: 'scratch',\n    streamCount: items.length,\n  }\n}];\n"
+      },
+      "id": "merge-scratch-research",
+      "name": "Merge Scratch Research",
+      "position": [
+        2640,
+        112
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst theses = d.theses || [];\nconst topic = d.topic || d.description || '';\nconst ruContext = 'Россия, российский рынок: ';\n\nreturn theses.map((thesis, i) => ({\n  json: {\n    ...d,\n    thesis,\n    thesisIndex: i + 1,\n    totalTheses: theses.length,\n    topic,\n    query: ruContext + topic + ' — ' + thesis,\n  }\n}));\n"
+      },
+      "id": "prepare-thesis-research",
+      "name": "Prepare Thesis Research",
+      "position": [
+        2160,
+        496
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "messages": {
+          "message": [
+            {
+              "role": "user",
+              "content": "={{ $json.query }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 2000
+        },
+        "requestOptions": {}
+      },
+      "id": "perplexity-thesis",
+      "name": "Perplexity Thesis Research",
+      "position": [
+        2400,
+        496
+      ],
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "credentials": {
+        "perplexityApi": {
+          "id": "um7RpJwg4207ROLP",
+          "name": "Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nlet mergedContent = '';\nlet allSources = [];\n\nfor (const item of items) {\n  const json = item.json;\n  const content = json.choices?.[0]?.message?.content || '';\n  mergedContent += '\\n### Тезис ' + json.thesisIndex + ': ' + json.thesis + '\\n';\n  mergedContent += content;\n  if (json.sources) {\n    allSources = allSources.concat(json.sources);\n  }\n}\n\n// Back-reference Parse Profile to preserve original request data\nconst first = $(\"Parse Profile\").first().json;\n\nreturn [{\n  json: {\n    ...first,\n    researchContent: mergedContent,\n    researchSources: allSources,\n    researchMode: 'theses',\n    thesisCount: items.length,\n  }\n}];\n"
+      },
+      "id": "merge-thesis-research",
+      "name": "Merge Thesis Research",
+      "position": [
+        2640,
+        496
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst topic = d.topic || d.description || '';\nconst description = d.description || '';\nconst researchContent = d.researchContent || '';\nconst theses = d.theses || [];\nconst speakerName = d.speakerName || '';\nconst speakerTitle = d.speakerTitle || '';\nconst speakerCompany = d.speakerCompany || '';\nconst speakerVoice = d.speakerVoiceGuidelines || '';\n\nconst speakerBlock = '## Профиль спикера\\nИмя: ' + speakerName + '\\nДолжность: ' + speakerTitle + '\\nКомпания: ' + speakerCompany + '\\n\\n## Voice Guidelines\\n' + speakerVoice;\n\nconst thesesBlock = theses.length > 0\n  ? '\\n\\n## Тезисы для развития\\n' + theses.map((t, i) => (i + 1) + '. ' + t).join('\\n')\n  : '';\n\nconst prompts = {\n  thought_leadership: 'Ты — экспертный автор брендингового агентства DDVB. Напиши Thought Leadership статью от имени спикера.\\n\\n' + speakerBlock + '\\n\\n## Требования\\n- Объём: 1800–2200 слов\\n- Структура: Лид → Контекст → Экспертный взгляд → Примеры → Вывод\\n- Заголовки H2\\n- Экспертный, не менторский тон\\n- Конкретные примеры и цифры',\n  howto: 'Ты — экспертный автор брендингового агентства DDVB. Напиши How-to статью.\\n\\n' + speakerBlock + '\\n\\n## Требования\\n- Объём: 1500–2000 слов\\n- Структура: Введение → Понимание проблемы → Пошаговое руководство → Примеры → Заключение\\n- Заголовки H2, нумерованные списки\\n- Практический тон, обращение «ты»',\n  pr_news: 'Ты — PR-автор брендингового агентства DDVB. Напиши PR/новостную статью.\\n\\n' + speakerBlock + '\\n\\n## Требования\\n- Объём: 800–1200 слов\\n- Структура: Заголовок → Лид → Основная часть → Справка о компании\\n- Новостной тон, факты на первом месте\\n- Включи прямую цитату спикера',\n};\n\nconst systemPrompt = prompts[d.articleType] || prompts.thought_leadership;\nconst userPrompt = 'Тема: ' + topic + (description ? '\\nОписание: ' + description : '') + thesesBlock + '\\n\\nИсследование:\\n' + researchContent;\n\nreturn [{ json: { ...d, systemPrompt, userPrompt } }];\n"
+      },
+      "id": "build-writer-prompt",
+      "name": "Build Writer Prompt",
+      "position": [
+        2880,
+        304
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userPrompt }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "={{ $json.systemPrompt }}"
+            }
+          ]
+        }
+      },
+      "id": "claude-writer",
+      "name": "Claude Writer",
+      "position": [
+        3120,
+        304
+      ],
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "value": "claude-sonnet-4-6"
+        },
+        "options": {}
+      },
+      "id": "anthropic-model",
+      "name": "Anthropic Model",
+      "position": [
+        3040,
+        496
+      ],
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "credentials": {
+        "anthropicApi": {
+          "id": "ymGOUl4dtUS4fQuy",
+          "name": "DDVB Anthropic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Ты — стилистический редактор. Отредактируй СТИЛЬ текста, не меняя содержание. Сохрани ВСЕ заголовки, факты, структуру. Удали AI-паттерны: «является», «данный», «позволяет», «в рамках», «осуществлять». Используй «мы» для DDVB. Живые глаголы. Выведи ТОЛЬКО текст статьи."
+            }
+          ]
+        }
+      },
+      "id": "humanizer",
+      "name": "Humanizer",
+      "position": [
+        3360,
+        304
+      ],
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "value": "gpt-4o"
+        },
+        "options": {
+          "maxTokens": 8096,
+          "temperature": 0.7
+        }
+      },
+      "id": "openai-model",
+      "name": "OpenAI Model",
+      "position": [
+        3280,
+        496
+      ],
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "credentials": {
+        "openAiApi": {
+          "id": "vMHSP02jcq5bmgAi",
+          "name": "DDVB OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const article = $json.text || '';\nconst bwp = $('Build Writer Prompt').first().json;\nconst charCount = article.length;\nconst wordCount = article.split(/\\s+/).filter(w => w.length > 0).length;\nreturn [{\n  json: {\n    article,\n    charCount,\n    wordCount,\n    articleType: bwp.articleType || '',\n    speakerName: bwp.speakerName || '',\n    speakerTitle: bwp.speakerTitle || '',\n    jobId: bwp.jobId,\n    callbackUrl: bwp.callbackUrl,\n    timestamp: bwp.timestamp,\n    isSuccess: article.length > 100,\n  }\n}];\n"
+      },
+      "id": "finalize-article",
+      "name": "Finalize Article",
+      "position": [
+        3600,
+        304
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "check-success",
+              "leftValue": "={{ $json.isSuccess }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "check-result",
+      "name": "Check Result",
+      "position": [
+        3840,
+        304
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const CALLBACK_API_KEY = 'YOUR_N8N_API_KEY';\nconst data = $input.first().json;\nconst callbackUrl = String(data.callbackUrl || '').replace(/\\r?\\n/g, '').trim();\nreturn [{\n  json: {\n    payload: {\n      jobId: data.jobId,\n      status: 'completed',\n      workflowType: 'article',\n      result: {\n        content: data.article,\n        charCount: data.charCount,\n        wordCount: data.wordCount,\n        speakerName: data.speakerName,\n        speakerTitle: data.speakerTitle,\n        articleType: data.articleType,\n      },\n      executionTime: Date.now() - new Date(data.timestamp).getTime(),\n      timestamp: new Date().toISOString(),\n    },\n    callbackUrl,\n    apiKey: CALLBACK_API_KEY,\n  }\n}];\n"
+      },
+      "id": "build-callback",
+      "name": "Build Callback",
+      "position": [
+        4080,
+        192
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.callbackUrl }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-DDVB-API-Key",
+              "value": "={{ $json.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "send-web-callback",
+      "name": "Send Web Callback",
+      "position": [
+        4320,
+        192
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const CALLBACK_API_KEY = 'YOUR_N8N_API_KEY';\nlet p = {};\ntry { p = $('Parse Request').first().json; } catch(e) { p = { jobId: 'unknown', callbackUrl: '', timestamp: new Date().toISOString() }; }\nconst data = $input.first().json;\nconst callbackUrl = String(p.callbackUrl || data.callbackUrl || '').replace(/\\r?\\n/g, '').trim();\nconst errorMessage = data.error?.message || data.message || (data.missingFields || []).join(', ') || 'Ошибка генерации';\nreturn [{\n  json: {\n    payload: {\n      jobId: p.jobId || data.jobId || 'unknown',\n      status: 'failed',\n      workflowType: 'article',\n      error: { message: errorMessage, stage: 'generation' },\n      executionTime: Date.now() - new Date(p.timestamp || Date.now()).getTime(),\n      timestamp: new Date().toISOString(),\n    },\n    callbackUrl,\n    apiKey: CALLBACK_API_KEY,\n  }\n}];\n"
+      },
+      "id": "build-error-callback",
+      "name": "Build Error Callback",
+      "position": [
+        4080,
+        496
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.callbackUrl }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-DDVB-API-Key",
+              "value": "={{ $json.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "send-error-callback",
+      "name": "Send Error Callback",
+      "position": [
+        4320,
+        496
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate API Key": {
+      "main": [
+        [
+          {
+            "node": "Normalize Web Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Web Input": {
+      "main": [
+        [
+          {
+            "node": "Respond 202",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 202": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Fields": {
+      "main": [
+        [
+          {
+            "node": "Fetch Speaker Profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Speaker Profile": {
+      "main": [
+        [
+          {
+            "node": "Parse Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Profile": {
+      "main": [
+        [
+          {
+            "node": "Switch: Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Mode": {
+      "main": [
+        [
+          {
+            "node": "Build Scratch Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Thesis Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Scratch Queries": {
+      "main": [
+        [
+          {
+            "node": "Perplexity Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity Research": {
+      "main": [
+        [
+          {
+            "node": "Merge Scratch Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Scratch Research": {
+      "main": [
+        [
+          {
+            "node": "Build Writer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Thesis Research": {
+      "main": [
+        [
+          {
+            "node": "Perplexity Thesis Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity Thesis Research": {
+      "main": [
+        [
+          {
+            "node": "Merge Thesis Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Thesis Research": {
+      "main": [
+        [
+          {
+            "node": "Build Writer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Writer Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Writer": {
+      "main": [
+        [
+          {
+            "node": "Humanizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Claude Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Humanizer": {
+      "main": [
+        [
+          {
+            "node": "Finalize Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Humanizer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Article": {
+      "main": [
+        [
+          {
+            "node": "Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Result": {
+      "main": [
+        [
+          {
+            "node": "Build Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Callback": {
+      "main": [
+        [
+          {
+            "node": "Send Web Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Web Callback": {
+      "main": [
+        []
+      ]
+    },
+    "Build Error Callback": {
+      "main": [
+        [
+          {
+            "node": "Send Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Error Callback": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "76e04163-82db-43f9-a1a5-8fd7106b979a",
+  "activeVersionId": "76e04163-82db-43f9-a1a5-8fd7106b979a",
+  "versionCounter": 25,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-13T15:18:19.155Z",
+      "createdAt": "2026-03-13T15:18:19.155Z",
+      "role": "workflow:owner",
+      "workflowId": "olEdXGbrRTak2c9v",
+      "projectId": "aNguj8lUd9mrjCnH",
+      "project": {
+        "updatedAt": "2025-11-17T15:50:56.000Z",
+        "createdAt": "2025-11-17T15:45:57.319Z",
+        "id": "aNguj8lUd9mrjCnH",
+        "name": "DDVB Marketing Automation",
+        "type": "team",
+        "icon": {
+          "type": "icon",
+          "value": "layers"
+        },
+        "description": "",
+        "creatorId": null
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-13T15:52:57.677Z",
+    "createdAt": "2026-03-13T15:52:57.677Z",
+    "versionId": "76e04163-82db-43f9-a1a5-8fd7106b979a",
+    "workflowId": "olEdXGbrRTak2c9v",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "article/generate",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "webhook-main",
+        "name": "Webhook",
+        "position": [
+          0,
+          304
+        ],
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "onError": "continueRegularOutput",
+        "webhookId": "a1b2c3d4-0001-4000-8000-000000000001"
+      },
+      {
+        "parameters": {
+          "jsCode": "const EXPECTED_KEY = 'YOUR_N8N_API_KEY';\nconst incoming = $input.first();\nconst headers = incoming.json.headers || {};\nconst receivedKey = headers['x-ddvb-api-key'] || headers['X-DDVB-API-Key'] || '';\nif (receivedKey.trim() !== EXPECTED_KEY.trim()) {\n  throw new Error('Unauthorized: invalid or missing X-DDVB-API-Key');\n}\nconst body = incoming.json.body || incoming.json;\nreturn [{ json: body }];\n"
+        },
+        "id": "validate-api-key",
+        "name": "Validate API Key",
+        "position": [
+          240,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "jsCode": "const item = $input.first();\nconst body = item.json.body || item.json;\nconst jobId = body.jobId || 'job-' + Date.now();\nconst callbackUrl = (body.callbackUrl || '').replace(/\\r?\\n/g, '').trim();\nreturn [{ json: { ...body, jobId, callbackUrl, timestamp: new Date().toISOString() } }];\n"
+        },
+        "id": "normalize-web-input",
+        "name": "Normalize Web Input",
+        "position": [
+          480,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ { success: true, message: \"Job accepted\", jobId: $json.jobId } }}",
+          "options": {
+            "responseCode": 202
+          }
+        },
+        "id": "respond-202",
+        "name": "Respond 202",
+        "position": [
+          720,
+          304
+        ],
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1
+      },
+      {
+        "parameters": {
+          "jsCode": "const inputData = $input.first().json;\n\nfunction normalize(v) {\n  return String(v ?? '').trim();\n}\n\nconst mode = normalize(inputData.mode);\nconst articleType = normalize(inputData.articleType);\nconst speakerId = normalize(inputData.speakerId);\nconst topic = normalize(inputData.topic);\nconst description = normalize(inputData.description);\nconst theses = inputData.theses;\nconst jobId = normalize(inputData.jobId);\nconst callbackUrl = normalize(inputData.callbackUrl);\n\nconst missingFields = [];\nif (!mode) missingFields.push('mode (scratch/theses)');\nif (!articleType) missingFields.push('articleType (thought_leadership/howto/pr_news)');\nif (!speakerId) missingFields.push('speakerId');\nif (mode === 'scratch' && !topic) missingFields.push('topic');\nif (mode === 'scratch' && !description) missingFields.push('description');\nif (mode === 'theses' && (!theses || !Array.isArray(theses) || theses.length === 0)) missingFields.push('theses (array of strings)');\nif (!jobId) missingFields.push('jobId');\n\nconst validArticleTypes = ['thought_leadership', 'howto', 'pr_news'];\nif (articleType && !validArticleTypes.includes(articleType)) {\n  missingFields.push('articleType must be one of: thought_leadership, howto, pr_news');\n}\n\nconst validModes = ['scratch', 'theses'];\nif (mode && !validModes.includes(mode)) {\n  missingFields.push('mode must be one of: scratch, theses');\n}\n\nreturn [{\n  json: {\n    ...inputData,\n    mode,\n    articleType,\n    speakerId,\n    topic,\n    description,\n    theses: mode === 'theses' ? theses : [],\n    jobId,\n    callbackUrl,\n    isValid: missingFields.length === 0,\n    missingFields,\n  },\n}];\n"
+        },
+        "id": "parse-request",
+        "name": "Parse Request",
+        "position": [
+          960,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "check-valid",
+                "leftValue": "={{ $json.isValid }}",
+                "operator": {
+                  "operation": "equals",
+                  "type": "boolean"
+                },
+                "rightValue": true
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "validate-fields",
+        "name": "Validate Fields",
+        "position": [
+          1200,
+          304
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "resource": "file",
+          "operation": "get",
+          "owner": {
+            "__rl": true,
+            "mode": "name",
+            "value": "cybernexcorps"
+          },
+          "repository": {
+            "__rl": true,
+            "mode": "name",
+            "value": "ceo-comment-writer"
+          },
+          "filePath": "={{ 'profiles/' + $json.speakerId + '.json' }}",
+          "asBinaryProperty": false,
+          "additionalParameters": {
+            "reference": "main"
+          }
+        },
+        "id": "fetch-profile",
+        "name": "Fetch Speaker Profile",
+        "position": [
+          1440,
+          304
+        ],
+        "type": "n8n-nodes-base.github",
+        "typeVersion": 1.1,
+        "credentials": {
+          "githubApi": {
+            "id": "pGlylAmPTa6t4Io0",
+            "name": "GitHub account"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "jsCode": "const input = $input.first().json;\nconst original = $(\"Parse Request\").first().json;\n\nlet profile = null;\ntry {\n  const rawContent = input.content || '';\n  if (rawContent) {\n    const decoded = Buffer.from(rawContent.replace(/\\n/g, ''), 'base64').toString('utf-8');\n    profile = JSON.parse(decoded);\n  }\n} catch(e) { profile = null; }\n\nconst fallbackProfiles = {\n  maria_arkhangelskaya: {\n    name_ru: 'Мария Архангельская',\n    title_ru: 'Генеральный директор и управляющий партнёр',\n    company: 'DDVB',\n    voice_guidelines: 'Экспертный, но не менторский. Конкретные примеры. Живые глаголы.',\n  },\n  default: {\n    name_ru: 'Эксперт DDVB',\n    title_ru: 'Специалист',\n    company: 'DDVB',\n    voice_guidelines: 'Экспертный тон. Конкретика. Живой язык.',\n  },\n};\n\nif (!profile) {\n  const speakerId = original.speakerId || '';\n  profile = fallbackProfiles[speakerId] || fallbackProfiles.default;\n}\n\nreturn [{\n  json: {\n    ...original,\n    profile,\n    speakerName: profile.name_ru || profile.name || original.speakerId,\n    speakerTitle: profile.title_ru || profile.title || '',\n    speakerCompany: profile.company || 'DDVB',\n    speakerVoiceGuidelines: profile.voice_guidelines || profile.tone || '',\n  }\n}];\n"
+        },
+        "id": "parse-profile",
+        "name": "Parse Profile",
+        "position": [
+          1680,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "scratch-check",
+                      "leftValue": "={{ $json.mode }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "scratch"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  }
+                },
+                "outputIndex": 0,
+                "renameOutput": true,
+                "outputLabel": "Scratch"
+              },
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "theses-check",
+                      "leftValue": "={{ $json.mode }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "theses"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  }
+                },
+                "outputIndex": 1,
+                "renameOutput": true,
+                "outputLabel": "Theses"
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra"
+          }
+        },
+        "id": "switch-mode",
+        "name": "Switch: Mode",
+        "position": [
+          1920,
+          304
+        ],
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nconst topic = d.topic || '';\nconst description = d.description || '';\nconst articleType = d.articleType || '';\nconst ruContext = 'Россия, российский рынок: ';\n\nconst queries = [\n  ruContext + topic + ' — отраслевые тренды, состояние рынка, ключевые игроки',\n  ruContext + topic + ' — экспертные мнения, аналитика, прогнозы',\n  ruContext + topic + ' — практические примеры, кейсы, успешные проекты',\n  ruContext + topic + ' — статистика, метрики, исследования',\n];\n\nreturn queries.map((q, i) => ({\n  json: {\n    ...d,\n    query: q,\n    streamId: i + 1,\n    topic,\n    description,\n    articleType,\n  }\n}));\n"
+        },
+        "id": "build-scratch-queries",
+        "name": "Build Scratch Queries",
+        "position": [
+          2160,
+          112
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "messages": {
+            "message": [
+              {
+                "role": "user",
+                "content": "={{ $json.query }}"
+              }
+            ]
+          },
+          "options": {
+            "maxTokens": 2000
+          },
+          "requestOptions": {}
+        },
+        "id": "perplexity-scratch",
+        "name": "Perplexity Research",
+        "position": [
+          2400,
+          112
+        ],
+        "type": "n8n-nodes-base.perplexity",
+        "typeVersion": 1,
+        "credentials": {
+          "perplexityApi": {
+            "id": "um7RpJwg4207ROLP",
+            "name": "Perplexity account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nlet mergedContent = '';\nlet allSources = [];\n\nfor (const item of items) {\n  const json = item.json;\n  const content = json.choices?.[0]?.message?.content || '';\n  mergedContent += '\\n## Поток ' + json.streamId + ': ' + json.query + '\\n';\n  mergedContent += content;\n  if (json.sources) {\n    allSources = allSources.concat(json.sources);\n  }\n}\n\n// Back-reference Parse Profile to preserve original request data\nconst first = $(\"Parse Profile\").first().json;\n\nreturn [{\n  json: {\n    ...first,\n    researchContent: mergedContent,\n    researchSources: allSources,\n    researchMode: 'scratch',\n    streamCount: items.length,\n  }\n}];\n"
+        },
+        "id": "merge-scratch-research",
+        "name": "Merge Scratch Research",
+        "position": [
+          2640,
+          112
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nconst theses = d.theses || [];\nconst topic = d.topic || d.description || '';\nconst ruContext = 'Россия, российский рынок: ';\n\nreturn theses.map((thesis, i) => ({\n  json: {\n    ...d,\n    thesis,\n    thesisIndex: i + 1,\n    totalTheses: theses.length,\n    topic,\n    query: ruContext + topic + ' — ' + thesis,\n  }\n}));\n"
+        },
+        "id": "prepare-thesis-research",
+        "name": "Prepare Thesis Research",
+        "position": [
+          2160,
+          496
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "messages": {
+            "message": [
+              {
+                "role": "user",
+                "content": "={{ $json.query }}"
+              }
+            ]
+          },
+          "options": {
+            "maxTokens": 2000
+          },
+          "requestOptions": {}
+        },
+        "id": "perplexity-thesis",
+        "name": "Perplexity Thesis Research",
+        "position": [
+          2400,
+          496
+        ],
+        "type": "n8n-nodes-base.perplexity",
+        "typeVersion": 1,
+        "credentials": {
+          "perplexityApi": {
+            "id": "um7RpJwg4207ROLP",
+            "name": "Perplexity account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nlet mergedContent = '';\nlet allSources = [];\n\nfor (const item of items) {\n  const json = item.json;\n  const content = json.choices?.[0]?.message?.content || '';\n  mergedContent += '\\n### Тезис ' + json.thesisIndex + ': ' + json.thesis + '\\n';\n  mergedContent += content;\n  if (json.sources) {\n    allSources = allSources.concat(json.sources);\n  }\n}\n\n// Back-reference Parse Profile to preserve original request data\nconst first = $(\"Parse Profile\").first().json;\n\nreturn [{\n  json: {\n    ...first,\n    researchContent: mergedContent,\n    researchSources: allSources,\n    researchMode: 'theses',\n    thesisCount: items.length,\n  }\n}];\n"
+        },
+        "id": "merge-thesis-research",
+        "name": "Merge Thesis Research",
+        "position": [
+          2640,
+          496
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nconst topic = d.topic || d.description || '';\nconst description = d.description || '';\nconst researchContent = d.researchContent || '';\nconst theses = d.theses || [];\nconst speakerName = d.speakerName || '';\nconst speakerTitle = d.speakerTitle || '';\nconst speakerCompany = d.speakerCompany || '';\nconst speakerVoice = d.speakerVoiceGuidelines || '';\n\nconst speakerBlock = '## Профиль спикера\\nИмя: ' + speakerName + '\\nДолжность: ' + speakerTitle + '\\nКомпания: ' + speakerCompany + '\\n\\n## Voice Guidelines\\n' + speakerVoice;\n\nconst thesesBlock = theses.length > 0\n  ? '\\n\\n## Тезисы для развития\\n' + theses.map((t, i) => (i + 1) + '. ' + t).join('\\n')\n  : '';\n\nconst prompts = {\n  thought_leadership: 'Ты — экспертный автор брендингового агентства DDVB. Напиши Thought Leadership статью от имени спикера.\\n\\n' + speakerBlock + '\\n\\n## Требования\\n- Объём: 1800–2200 слов\\n- Структура: Лид → Контекст → Экспертный взгляд → Примеры → Вывод\\n- Заголовки H2\\n- Экспертный, не менторский тон\\n- Конкретные примеры и цифры',\n  howto: 'Ты — экспертный автор брендингового агентства DDVB. Напиши How-to статью.\\n\\n' + speakerBlock + '\\n\\n## Требования\\n- Объём: 1500–2000 слов\\n- Структура: Введение → Понимание проблемы → Пошаговое руководство → Примеры → Заключение\\n- Заголовки H2, нумерованные списки\\n- Практический тон, обращение «ты»',\n  pr_news: 'Ты — PR-автор брендингового агентства DDVB. Напиши PR/новостную статью.\\n\\n' + speakerBlock + '\\n\\n## Требования\\n- Объём: 800–1200 слов\\n- Структура: Заголовок → Лид → Основная часть → Справка о компании\\n- Новостной тон, факты на первом месте\\n- Включи прямую цитату спикера',\n};\n\nconst systemPrompt = prompts[d.articleType] || prompts.thought_leadership;\nconst userPrompt = 'Тема: ' + topic + (description ? '\\nОписание: ' + description : '') + thesesBlock + '\\n\\nИсследование:\\n' + researchContent;\n\nreturn [{ json: { ...d, systemPrompt, userPrompt } }];\n"
+        },
+        "id": "build-writer-prompt",
+        "name": "Build Writer Prompt",
+        "position": [
+          2880,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.userPrompt }}",
+          "messages": {
+            "messageValues": [
+              {
+                "message": "={{ $json.systemPrompt }}"
+              }
+            ]
+          }
+        },
+        "id": "claude-writer",
+        "name": "Claude Writer",
+        "position": [
+          3120,
+          304
+        ],
+        "type": "@n8n/n8n-nodes-langchain.chainLlm",
+        "typeVersion": 1.4,
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "model": {
+            "value": "claude-sonnet-4-6"
+          },
+          "options": {}
+        },
+        "id": "anthropic-model",
+        "name": "Anthropic Model",
+        "position": [
+          3040,
+          496
+        ],
+        "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+        "typeVersion": 1.3,
+        "credentials": {
+          "anthropicApi": {
+            "id": "ymGOUl4dtUS4fQuy",
+            "name": "DDVB Anthropic"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.text }}",
+          "messages": {
+            "messageValues": [
+              {
+                "message": "Ты — стилистический редактор. Отредактируй СТИЛЬ текста, не меняя содержание. Сохрани ВСЕ заголовки, факты, структуру. Удали AI-паттерны: «является», «данный», «позволяет», «в рамках», «осуществлять». Используй «мы» для DDVB. Живые глаголы. Выведи ТОЛЬКО текст статьи."
+              }
+            ]
+          }
+        },
+        "id": "humanizer",
+        "name": "Humanizer",
+        "position": [
+          3360,
+          304
+        ],
+        "type": "@n8n/n8n-nodes-langchain.chainLlm",
+        "typeVersion": 1.4,
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "model": {
+            "value": "gpt-4o"
+          },
+          "options": {
+            "maxTokens": 8096,
+            "temperature": 0.7
+          }
+        },
+        "id": "openai-model",
+        "name": "OpenAI Model",
+        "position": [
+          3280,
+          496
+        ],
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "credentials": {
+          "openAiApi": {
+            "id": "vMHSP02jcq5bmgAi",
+            "name": "DDVB OpenAI"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const article = $json.text || '';\nconst bwp = $('Build Writer Prompt').first().json;\nconst charCount = article.length;\nconst wordCount = article.split(/\\s+/).filter(w => w.length > 0).length;\nreturn [{\n  json: {\n    article,\n    charCount,\n    wordCount,\n    articleType: bwp.articleType || '',\n    speakerName: bwp.speakerName || '',\n    speakerTitle: bwp.speakerTitle || '',\n    jobId: bwp.jobId,\n    callbackUrl: bwp.callbackUrl,\n    timestamp: bwp.timestamp,\n    isSuccess: article.length > 100,\n  }\n}];\n"
+        },
+        "id": "finalize-article",
+        "name": "Finalize Article",
+        "position": [
+          3600,
+          304
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "check-success",
+                "leftValue": "={{ $json.isSuccess }}",
+                "operator": {
+                  "operation": "equals",
+                  "type": "boolean"
+                },
+                "rightValue": true
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            }
+          },
+          "options": {}
+        },
+        "id": "check-result",
+        "name": "Check Result",
+        "position": [
+          3840,
+          304
+        ],
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "jsCode": "const CALLBACK_API_KEY = 'YOUR_N8N_API_KEY';\nconst data = $input.first().json;\nconst callbackUrl = String(data.callbackUrl || '').replace(/\\r?\\n/g, '').trim();\nreturn [{\n  json: {\n    payload: {\n      jobId: data.jobId,\n      status: 'completed',\n      workflowType: 'article',\n      result: {\n        content: data.article,\n        charCount: data.charCount,\n        wordCount: data.wordCount,\n        speakerName: data.speakerName,\n        speakerTitle: data.speakerTitle,\n        articleType: data.articleType,\n      },\n      executionTime: Date.now() - new Date(data.timestamp).getTime(),\n      timestamp: new Date().toISOString(),\n    },\n    callbackUrl,\n    apiKey: CALLBACK_API_KEY,\n  }\n}];\n"
+        },
+        "id": "build-callback",
+        "name": "Build Callback",
+        "position": [
+          4080,
+          192
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.callbackUrl }}",
+          "method": "POST",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "X-DDVB-API-Key",
+                "value": "={{ $json.apiKey }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.payload) }}",
+          "options": {}
+        },
+        "id": "send-web-callback",
+        "name": "Send Web Callback",
+        "position": [
+          4320,
+          192
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "jsCode": "const CALLBACK_API_KEY = 'YOUR_N8N_API_KEY';\nlet p = {};\ntry { p = $('Parse Request').first().json; } catch(e) { p = { jobId: 'unknown', callbackUrl: '', timestamp: new Date().toISOString() }; }\nconst data = $input.first().json;\nconst callbackUrl = String(p.callbackUrl || data.callbackUrl || '').replace(/\\r?\\n/g, '').trim();\nconst errorMessage = data.error?.message || data.message || (data.missingFields || []).join(', ') || 'Ошибка генерации';\nreturn [{\n  json: {\n    payload: {\n      jobId: p.jobId || data.jobId || 'unknown',\n      status: 'failed',\n      workflowType: 'article',\n      error: { message: errorMessage, stage: 'generation' },\n      executionTime: Date.now() - new Date(p.timestamp || Date.now()).getTime(),\n      timestamp: new Date().toISOString(),\n    },\n    callbackUrl,\n    apiKey: CALLBACK_API_KEY,\n  }\n}];\n"
+        },
+        "id": "build-error-callback",
+        "name": "Build Error Callback",
+        "position": [
+          4080,
+          496
+        ],
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.callbackUrl }}",
+          "method": "POST",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "X-DDVB-API-Key",
+                "value": "={{ $json.apiKey }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.payload) }}",
+          "options": {}
+        },
+        "id": "send-error-callback",
+        "name": "Send Error Callback",
+        "position": [
+          4320,
+          496
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "continueOnFail": true
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Validate API Key",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate API Key": {
+        "main": [
+          [
+            {
+              "node": "Normalize Web Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Web Input": {
+        "main": [
+          [
+            {
+              "node": "Respond 202",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Respond 202": {
+        "main": [
+          [
+            {
+              "node": "Parse Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Request": {
+        "main": [
+          [
+            {
+              "node": "Validate Fields",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Fields": {
+        "main": [
+          [
+            {
+              "node": "Fetch Speaker Profile",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Error Callback",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Speaker Profile": {
+        "main": [
+          [
+            {
+              "node": "Parse Profile",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Profile": {
+        "main": [
+          [
+            {
+              "node": "Switch: Mode",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Switch: Mode": {
+        "main": [
+          [
+            {
+              "node": "Build Scratch Queries",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Prepare Thesis Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Scratch Queries": {
+        "main": [
+          [
+            {
+              "node": "Perplexity Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Perplexity Research": {
+        "main": [
+          [
+            {
+              "node": "Merge Scratch Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge Scratch Research": {
+        "main": [
+          [
+            {
+              "node": "Build Writer Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Thesis Research": {
+        "main": [
+          [
+            {
+              "node": "Perplexity Thesis Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Perplexity Thesis Research": {
+        "main": [
+          [
+            {
+              "node": "Merge Thesis Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge Thesis Research": {
+        "main": [
+          [
+            {
+              "node": "Build Writer Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Writer Prompt": {
+        "main": [
+          [
+            {
+              "node": "Claude Writer",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claude Writer": {
+        "main": [
+          [
+            {
+              "node": "Humanizer",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Anthropic Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Claude Writer",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Humanizer": {
+        "main": [
+          [
+            {
+              "node": "Finalize Article",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Humanizer",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Finalize Article": {
+        "main": [
+          [
+            {
+              "node": "Check Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Result": {
+        "main": [
+          [
+            {
+              "node": "Build Callback",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Error Callback",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Callback": {
+        "main": [
+          [
+            {
+              "node": "Send Web Callback",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Web Callback": {
+        "main": [
+          []
+        ]
+      },
+      "Build Error Callback": {
+        "main": [
+          [
+            {
+              "node": "Send Error Callback",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Error Callback": {
+        "main": [
+          []
+        ]
+      }
+    },
+    "authors": "Slava Pospelov",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-13T15:52:57.907Z",
+        "id": 639,
+        "workflowId": "olEdXGbrRTak2c9v",
+        "versionId": "76e04163-82db-43f9-a1a5-8fd7106b979a",
+        "event": "activated",
+        "userId": "677362bc-4d0c-4951-88b8-50b081e18d50"
+      },
+      {
+        "createdAt": "2026-03-13T15:52:57.806Z",
+        "id": 638,
+        "workflowId": "olEdXGbrRTak2c9v",
+        "versionId": "76e04163-82db-43f9-a1a5-8fd7106b979a",
+        "event": "deactivated",
+        "userId": "677362bc-4d0c-4951-88b8-50b081e18d50"
+      }
+    ]
+  }
+}
